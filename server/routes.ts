@@ -6,6 +6,8 @@ import { z } from "zod";
 // Demo user ID for development
 const DEMO_USER_ID = "demo-user";
 
+let cachedDemoUserId: string | null = null;
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -13,27 +15,41 @@ export async function registerRoutes(
   
   // Ensure demo user exists
   async function ensureDemoUser() {
-    const existing = await storage.getUserByEmail("demo@example.com");
-    if (!existing) {
-      await storage.createUser({
-        email: "demo@example.com",
-        password: "demo123",
-        businessName: "Demo Store",
-      });
+    try {
+      const existing = await storage.getUserByEmail("demo@example.com");
+      if (!existing) {
+        await storage.createUser({
+          email: "demo@example.com",
+          password: "demo123",
+          businessName: "Demo Store",
+        });
+      }
+    } catch (error) {
+      console.warn("Could not ensure demo user exists (Firebase may not be fully configured):", error);
     }
   }
 
   // Get current user ID (demo mode)
   async function getCurrentUserId(): Promise<string> {
-    let user = await storage.getUserByEmail("demo@example.com");
-    if (!user) {
-      user = await storage.createUser({
-        email: "demo@example.com",
-        password: "demo123",
-        businessName: "Demo Store",
-      });
+    if (cachedDemoUserId) {
+      return cachedDemoUserId;
     }
-    return user.id;
+    try {
+      let user = await storage.getUserByEmail("demo@example.com");
+      if (!user) {
+        user = await storage.createUser({
+          email: "demo@example.com",
+          password: "demo123",
+          businessName: "Demo Store",
+        });
+      }
+      cachedDemoUserId = user.id;
+      return user.id;
+    } catch (error: any) {
+      console.warn("Firebase error (database may need to be enabled in Firebase Console):", error.message || error);
+      cachedDemoUserId = DEMO_USER_ID;
+      return DEMO_USER_ID;
+    }
   }
 
   // ============ Products Routes ============

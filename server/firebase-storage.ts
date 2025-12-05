@@ -57,16 +57,30 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getUser(id: string): Promise<User | undefined> {
-    const doc = await this.db.collection("users").doc(id).get();
-    if (!doc.exists) return undefined;
-    return { id: doc.id, ...doc.data() } as User;
+    try {
+      const doc = await this.db.collection("users").doc(id).get();
+      if (!doc.exists) return undefined;
+      return { id: doc.id, ...doc.data() } as User;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const snapshot = await this.db.collection("users").where("email", "==", email).limit(1).get();
-    if (snapshot.empty) return undefined;
-    const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() } as User;
+    try {
+      const snapshot = await this.db.collection("users").where("email", "==", email).limit(1).get();
+      if (snapshot.empty) return undefined;
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as User;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async createUser(user: InsertUser): Promise<User> {
@@ -92,29 +106,43 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getProducts(userId: string): Promise<Product[]> {
-    const snapshot = await this.db.collection("products")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .get();
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
+    try {
+      const snapshot = await this.db.collection("products")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: toDate(data.createdAt),
+        } as Product;
+      });
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getProduct(id: string): Promise<Product | undefined> {
+    try {
+      const doc = await this.db.collection("products").doc(id).get();
+      if (!doc.exists) return undefined;
+      const data = doc.data()!;
       return {
         ...data,
         id: doc.id,
         createdAt: toDate(data.createdAt),
       } as Product;
-    });
-  }
-
-  async getProduct(id: string): Promise<Product | undefined> {
-    const doc = await this.db.collection("products").doc(id).get();
-    if (!doc.exists) return undefined;
-    const data = doc.data()!;
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: toDate(data.createdAt),
-    } as Product;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async createProduct(product: InsertProduct): Promise<Product> {
@@ -155,54 +183,75 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getCheckoutPages(userId: string): Promise<(CheckoutPage & { product?: Product })[]> {
-    const snapshot = await this.db.collection("checkoutPages")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .get();
-    
-    const pages = await Promise.all(snapshot.docs.map(async (doc) => {
+    try {
+      const snapshot = await this.db.collection("checkoutPages")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+      
+      const pages = await Promise.all(snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const page = {
+          ...data,
+          id: doc.id,
+          createdAt: toDate(data.createdAt),
+        } as CheckoutPage;
+        
+        const product = await this.getProduct(page.productId);
+        return { ...page, product };
+      }));
+      
+      return pages;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getCheckoutPage(id: string): Promise<(CheckoutPage & { product?: Product }) | undefined> {
+    try {
+      const doc = await this.db.collection("checkoutPages").doc(id).get();
+      if (!doc.exists) return undefined;
+      const data = doc.data()!;
+      const page = {
+        ...data,
+        id: doc.id,
+        createdAt: toDate(data.createdAt),
+      } as CheckoutPage;
+      const product = await this.getProduct(page.productId);
+      return { ...page, product };
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async getCheckoutPageBySlug(slug: string): Promise<(CheckoutPage & { product?: Product }) | undefined> {
+    try {
+      const snapshot = await this.db.collection("checkoutPages")
+        .where("slug", "==", slug)
+        .limit(1)
+        .get();
+      if (snapshot.empty) return undefined;
+      const doc = snapshot.docs[0];
       const data = doc.data();
       const page = {
         ...data,
         id: doc.id,
         createdAt: toDate(data.createdAt),
       } as CheckoutPage;
-      
       const product = await this.getProduct(page.productId);
       return { ...page, product };
-    }));
-    
-    return pages;
-  }
-
-  async getCheckoutPage(id: string): Promise<(CheckoutPage & { product?: Product }) | undefined> {
-    const doc = await this.db.collection("checkoutPages").doc(id).get();
-    if (!doc.exists) return undefined;
-    const data = doc.data()!;
-    const page = {
-      ...data,
-      id: doc.id,
-      createdAt: toDate(data.createdAt),
-    } as CheckoutPage;
-    const product = await this.getProduct(page.productId);
-    return { ...page, product };
-  }
-
-  async getCheckoutPageBySlug(slug: string): Promise<(CheckoutPage & { product?: Product }) | undefined> {
-    const snapshot = await this.db.collection("checkoutPages")
-      .where("slug", "==", slug)
-      .limit(1)
-      .get();
-    if (snapshot.empty) return undefined;
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    const page = {
-      ...data,
-      id: doc.id,
-      createdAt: toDate(data.createdAt),
-    } as CheckoutPage;
-    const product = await this.getProduct(page.productId);
-    return { ...page, product };
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async createCheckoutPage(page: InsertCheckoutPage): Promise<CheckoutPage> {
@@ -245,11 +294,56 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getCoupons(userId: string): Promise<Coupon[]> {
-    const snapshot = await this.db.collection("coupons")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .get();
-    return snapshot.docs.map(doc => {
+    try {
+      const snapshot = await this.db.collection("coupons")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: toDate(data.createdAt),
+          expiresAt: toDate(data.expiresAt),
+        } as Coupon;
+      });
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getCoupon(id: string): Promise<Coupon | undefined> {
+    try {
+      const doc = await this.db.collection("coupons").doc(id).get();
+      if (!doc.exists) return undefined;
+      const data = doc.data()!;
+      return {
+        ...data,
+        id: doc.id,
+        createdAt: toDate(data.createdAt),
+        expiresAt: toDate(data.expiresAt),
+      } as Coupon;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async getCouponByCode(code: string, userId: string): Promise<Coupon | undefined> {
+    try {
+      const snapshot = await this.db.collection("coupons")
+        .where("code", "==", code)
+        .where("userId", "==", userId)
+        .limit(1)
+        .get();
+      if (snapshot.empty) return undefined;
+      const doc = snapshot.docs[0];
       const data = doc.data();
       return {
         ...data,
@@ -257,36 +351,12 @@ export class FirebaseStorage implements IStorage {
         createdAt: toDate(data.createdAt),
         expiresAt: toDate(data.expiresAt),
       } as Coupon;
-    });
-  }
-
-  async getCoupon(id: string): Promise<Coupon | undefined> {
-    const doc = await this.db.collection("coupons").doc(id).get();
-    if (!doc.exists) return undefined;
-    const data = doc.data()!;
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: toDate(data.createdAt),
-      expiresAt: toDate(data.expiresAt),
-    } as Coupon;
-  }
-
-  async getCouponByCode(code: string, userId: string): Promise<Coupon | undefined> {
-    const snapshot = await this.db.collection("coupons")
-      .where("code", "==", code)
-      .where("userId", "==", userId)
-      .limit(1)
-      .get();
-    if (snapshot.empty) return undefined;
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: toDate(data.createdAt),
-      expiresAt: toDate(data.expiresAt),
-    } as Coupon;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async createCoupon(coupon: InsertCoupon): Promise<Coupon> {
@@ -328,45 +398,66 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getCustomers(userId: string): Promise<Customer[]> {
-    const snapshot = await this.db.collection("customers")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .get();
-    return snapshot.docs.map(doc => {
+    try {
+      const snapshot = await this.db.collection("customers")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: toDate(data.createdAt),
+        } as Customer;
+      });
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getCustomer(id: string): Promise<Customer | undefined> {
+    try {
+      const doc = await this.db.collection("customers").doc(id).get();
+      if (!doc.exists) return undefined;
+      const data = doc.data()!;
+      return {
+        ...data,
+        id: doc.id,
+        createdAt: toDate(data.createdAt),
+      } as Customer;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async getCustomerByEmail(email: string, userId: string): Promise<Customer | undefined> {
+    try {
+      const snapshot = await this.db.collection("customers")
+        .where("email", "==", email)
+        .where("userId", "==", userId)
+        .limit(1)
+        .get();
+      if (snapshot.empty) return undefined;
+      const doc = snapshot.docs[0];
       const data = doc.data();
       return {
         ...data,
         id: doc.id,
         createdAt: toDate(data.createdAt),
       } as Customer;
-    });
-  }
-
-  async getCustomer(id: string): Promise<Customer | undefined> {
-    const doc = await this.db.collection("customers").doc(id).get();
-    if (!doc.exists) return undefined;
-    const data = doc.data()!;
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: toDate(data.createdAt),
-    } as Customer;
-  }
-
-  async getCustomerByEmail(email: string, userId: string): Promise<Customer | undefined> {
-    const snapshot = await this.db.collection("customers")
-      .where("email", "==", email)
-      .where("userId", "==", userId)
-      .limit(1)
-      .get();
-    if (snapshot.empty) return undefined;
-    const doc = snapshot.docs[0];
-    const data = doc.data();
-    return {
-      ...data,
-      id: doc.id,
-      createdAt: toDate(data.createdAt),
-    } as Customer;
+    } catch (error: any) {
+      if (error.code === 5) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async createCustomer(customer: InsertCustomer): Promise<Customer> {
@@ -392,30 +483,37 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getOrders(userId: string): Promise<(Order & { customer?: Customer; items?: OrderItem[] })[]> {
-    const snapshot = await this.db.collection("orders")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .get();
-    
-    return Promise.all(snapshot.docs.map(async (doc) => {
-      const data = doc.data();
-      const order = {
-        ...data,
-        id: doc.id,
-        createdAt: toDate(data.createdAt),
-      } as Order;
-      
-      const customer = await this.getCustomer(order.customerId);
-      const itemsSnapshot = await this.db.collection("orderItems")
-        .where("orderId", "==", order.id)
+    try {
+      const snapshot = await this.db.collection("orders")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
         .get();
-      const items = itemsSnapshot.docs.map(itemDoc => ({
-        ...itemDoc.data(),
-        id: itemDoc.id,
-      } as OrderItem));
       
-      return { ...order, customer, items };
-    }));
+      return Promise.all(snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const order = {
+          ...data,
+          id: doc.id,
+          createdAt: toDate(data.createdAt),
+        } as Order;
+        
+        const customer = await this.getCustomer(order.customerId);
+        const itemsSnapshot = await this.db.collection("orderItems")
+          .where("orderId", "==", order.id)
+          .get();
+        const items = itemsSnapshot.docs.map(itemDoc => ({
+          ...itemDoc.data(),
+          id: itemDoc.id,
+        } as OrderItem));
+        
+        return { ...order, customer, items };
+      }));
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getOrder(id: string): Promise<(Order & { customer?: Customer; items?: (OrderItem & { product?: Product })[] }) | undefined> {
@@ -494,13 +592,20 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getEmailTemplates(userId: string): Promise<EmailTemplate[]> {
-    const snapshot = await this.db.collection("emailTemplates")
-      .where("userId", "==", userId)
-      .get();
-    return snapshot.docs.map(doc => ({
-      ...doc.data(),
-      id: doc.id,
-    } as EmailTemplate));
+    try {
+      const snapshot = await this.db.collection("emailTemplates")
+        .where("userId", "==", userId)
+        .get();
+      return snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id,
+      } as EmailTemplate));
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getEmailTemplate(id: string): Promise<EmailTemplate | undefined> {
@@ -554,20 +659,27 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getPixelEvents(userId: string, limit = 100): Promise<PixelEvent[]> {
-    const snapshot = await this.db.collection("pixelEvents")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .limit(limit)
-      .get();
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-        createdAt: toDate(data.createdAt),
-        eventTime: toDate(data.eventTime),
-      } as PixelEvent;
-    });
+    try {
+      const snapshot = await this.db.collection("pixelEvents")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .limit(limit)
+        .get();
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: toDate(data.createdAt),
+          eventTime: toDate(data.eventTime),
+        } as PixelEvent;
+      });
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async createAbandonedCart(cart: InsertAbandonedCart): Promise<AbandonedCart> {
@@ -585,19 +697,26 @@ export class FirebaseStorage implements IStorage {
   }
 
   async getAbandonedCarts(userId: string): Promise<AbandonedCart[]> {
-    const snapshot = await this.db.collection("abandonedCarts")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .get();
-    return snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        ...data,
-        id: doc.id,
-        createdAt: toDate(data.createdAt),
-        recoveredAt: toDate(data.recoveredAt),
-      } as AbandonedCart;
-    });
+    try {
+      const snapshot = await this.db.collection("abandonedCarts")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: toDate(data.createdAt),
+          recoveredAt: toDate(data.recoveredAt),
+        } as AbandonedCart;
+      });
+    } catch (error: any) {
+      if (error.code === 5) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async updateAbandonedCart(id: string, data: Partial<AbandonedCart>): Promise<AbandonedCart | undefined> {
