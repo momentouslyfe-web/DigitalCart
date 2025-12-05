@@ -366,4 +366,18 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+import { FirebaseStorage } from "./firebase-storage";
+
+function createStorage(): IStorage {
+  const dbType = process.env.DATABASE_TYPE || "postgres";
+  
+  if (dbType === "firebase") {
+    console.log("Using Firebase Firestore database");
+    return new FirebaseStorage();
+  }
+  
+  console.log("Using PostgreSQL database");
+  return new DatabaseStorage();
+}
+
+export const storage = createStorage();
