@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "npx vite build --outDir dist",
-  "outputDirectory": "dist",
+  "buildCommand": "npx vite build",
+  "outputDirectory": "dist/public",
   "framework": null,
   "rewrites": [
     {
